@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>キャラクター画像ランダム生成</title>
+    <!-- ZIPを作成するためのライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+    <h1>キャラクター画像ジェネレーター</h1>
+    <!-- 指定されたサイズ (w1178 x h1650) -->
+    <canvas id="myCanvas" width="1178" height="1650" style="border:1px solid #000; max-width: 100%; height: auto;"></canvas>
+    <br>
+    <button onclick="download100()" style="padding: 15px 30px; font-size: 1.2em;">厳選100枚を1つのZIPで一括保存</button>
+    
+    <script>
+        async function download100() {
+            const canvas = document.getElementById('myCanvas');
+            const ctx = canvas.getContext('2d');
+            const zip = new JSZip();
+
+            const counts = {
+                hair: 10,
+                base: 1,
+                dress: 8,
+                bang: 6,
+                face: 9,
+                glass: 2  // glass0.png と glass1.png
+            };
+
+            const maxDownload = 100; // 要望：100枚に絞る
+
+            // --- 1. すべての組み合わせ（480通り）を作る ---
+            let allTrios = [];
+            for (let h = 1; h <= counts.hair; h++) {
+                for (let d = 1; d <= counts.dress; d++) {
+                    for (let bg = 1; bg <= counts.bang; bg++) {
+                        allTrios.push({ h, d, bg });
+                    }
+                }
+            }
+
+            // --- 2. ドレス（dress）ごとにグループ分けしてシャッフル ---
+            let dressGroups = {};
+            for (let d = 1; d <= counts.dress; d++) {
+                dressGroups[d] = allTrios.filter(trio => trio.d === d);
+                dressGroups[d].sort(() => Math.random() - 0.5);
+            }
+
+            // --- 3. 100枚の中にドレスが均等に混ざるようにピックアップ ---
+            // 8ドレスで100枚を割り振る（100 ÷ 8 ＝ 1ドレスあたり約12〜13枚）
+            let selectedTrios = [];
+            const baseCountPerDress = Math.floor(maxDownload / counts.dress); // 12枚
+            const remainder = maxDownload % counts.dress; // 余り4枚
+
+            for (let d = 1; d <= counts.dress; d++) {
+                // 余った分を最初の4つのドレスに1枚ずつ配分して、ぴったり100枚にする
+                const takeCount = baseCountPerDress + (d <= remainder ? 1 : 0);
+                const items = dressGroups[d].splice(0, takeCount);
+                selectedTrios.push(...items);
+            }
+
+            // 最終的な順番をランダムにシャッフル
+            selectedTrios.sort(() => Math.random() - 0.5);
+
+            let count = 0;
+            // --- 4. 100枚を順番に描画してZIPに詰める ---
+            for (const trio of selectedTrios) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // face（1 〜 9）をランダムに選択
+                const f = Math.floor(Math.random() * counts.face) + 1;
+
+                // 要望：glass0 と glass1 の割合を 85 : 15 に設定
+                const glassWeights = { 0: 85, 1: 15 };
+                const totalWeight = glassWeights[0] + glassWeights[1];
+                const rand = Math.random() * totalWeight;
+                let g = (rand < glassWeights[0]) ? 0 : 1;
+
+                const sources = [
+                    `img/hair/hair${trio.h}.png`,
+                    `img/base/base.png`,
+                    `img/dress/dress${trio.d}.png`,
+                    `img/bang/bang${trio.bg}.png`,
+                    `img/face/face${f}.png`
+                ];
+
+                if (g !== 0) {
+                    sources.push(`img/glass/glass${g}.png`);
+                }
+
+                // 画像の読み込みと描画
+                for (const src of sources) {
+                    try {
+                        const img = await loadImage(src);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    } catch (e) {
+                        alert("エラー: 以下の画像が見つかりません\n" + src);
+                        return;
+                    }
+                }
+
+                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                count++;
+                zip.file(`character_${count}.png`, blob);
+            }
+
+            // --- 5. 1つのZIPとしてダウンロード ---
+            alert(`100枚の描画が完了しました！ZIPファイルをダウンロードします。`);
+            
+            const content = await zip.generateAsync({ type: "blob" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(content);
+            link.download = `characters_100.zip`;
+            link.click();
+        }
+
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = (e) => reject(new Error("Failed to load: " + src));
+                img.src = src;
+            });
+        }
+    </script>
+</body>
+</html>
